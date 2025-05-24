@@ -1,180 +1,457 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // DOM要素の取得
-    const gameArea = document.getElementById('game-area');
-    const target = document.getElementById('target');
-    const startButton = document.getElementById('start-button');
-    const currentReactionTimeEl = document.getElementById('current-reaction-time');
-    const averageReactionTimeEl = document.getElementById('average-reaction-time');
-    const bestReactionTimeEl = document.getElementById('best-reaction-time');
-    const remainingClicksEl = document.getElementById('remaining-clicks');
-    const instructionsEl = document.getElementById('instructions');
-
-    const gameOverModal = document.getElementById('game-over-modal');
-    const finalAverageTimeEl = document.getElementById('final-average-time');
-    const finalBestTimeEl = document.getElementById('final-best-time');
-    const restartButton = document.getElementById('restart-button');
-
-    // ゲームの状態変数
-    let gameStarted = false;
-    let clicksRemaining;
-    let reactionTimes = [];
-    let bestTime = Infinity;
-    let targetAppearTime;
-    let targetTimeoutId;
-
-    const TOTAL_CLICKS = 10; // 1ゲームあたりのクリック回数
-
-    // 初期化処理
-    function initGame() {
-        gameStarted = false;
-        clicksRemaining = TOTAL_CLICKS;
-        reactionTimes = [];
-        bestTime = Infinity;
-        
-        startButton.disabled = false;
-        startButton.textContent = 'スタート';
-        target.classList.add('hidden');
-        instructionsEl.classList.remove('hidden');
-        gameOverModal.classList.add('hidden');
-
-        updateStatsDisplay();
-        currentReactionTimeEl.textContent = '- ms';
-    }
-
-    // 統計情報の表示を更新
-    function updateStatsDisplay() {
-        remainingClicksEl.textContent = clicksRemaining;
-        const avgTime = reactionTimes.length > 0 
-            ? (reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length).toFixed(0)
-            : '-';
-        averageReactionTimeEl.textContent = `${avgTime} ms`;
-        bestReactionTimeEl.textContent = bestTime === Infinity ? '- ms' : `${bestTime} ms`;
-    }
-
-    // ゲーム開始処理
-    function startGame() {
-        if (gameStarted) return;
-        gameStarted = true;
-        initGame(); // ゲーム状態をリセット
-
-        startButton.disabled = true;
-        startButton.textContent = 'ゲーム中...';
-        instructionsEl.classList.add('hidden');
-        
-        console.log("ゲーム開始！");
-        appearTarget();
-    }
-
-    // ターゲットを表示する処理
-    function appearTarget() {
-        if (clicksRemaining <= 0) {
-            endGame();
-            return;
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>瞬間反応チャレンジ：光を追え！</title>
+    <style>
+        /* 基本スタイル */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e; /* 深い夜空の色 */
+            color: #e0e0e0; /* 明るいテキスト色 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow-x: hidden; /* 横スクロールバーを防止 */
         }
 
-        // ターゲットを一旦隠す（連続表示の場合に備える）
-        target.classList.add('hidden');
-        target.classList.remove('clicked'); // クリックエフェクトをリセット
+        .container {
+            width: 95%;
+            max-width: 600px;
+            background-color: #162447; /* やや明るい背景色 */
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
 
-        // ランダムな遅延後にターゲットを表示
-        const delay = Math.random() * 2000 + 500; // 0.5秒から2.5秒のランダムな遅延
-        console.log(`次のターゲット表示まで: ${delay.toFixed(0)}ms`);
+        header {
+            margin-bottom: 20px;
+            border-bottom: 2px solid #1f4068; /* アクセントカラー */
+            padding-bottom: 15px;
+        }
 
-        clearTimeout(targetTimeoutId); // 既存のタイマーをクリア
-        targetTimeoutId = setTimeout(() => {
-            const gameAreaRect = gameArea.getBoundingClientRect();
-            const targetSize = target.offsetWidth; // ターゲットの実際の幅を取得
+        h1 {
+            color: #e43f5a; /* 目立つタイトル色 */
+            margin: 0;
+            font-size: 2.2em;
+            text-shadow: 0 0 10px #e43f5a;
+        }
 
-            // ターゲットがエリア内に完全に収まるように位置を計算
-            const maxX = gameAreaRect.width - targetSize;
-            const maxY = gameAreaRect.height - targetSize;
+        .subtitle {
+            color: #f5f5f5;
+            font-size: 1.2em;
+            margin-top: 5px;
+        }
 
-            const randomX = Math.max(0, Math.floor(Math.random() * maxX));
-            const randomY = Math.max(0, Math.floor(Math.random() * maxY));
+        /* ゲーム統計情報 */
+        .game-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 25px;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
 
-            target.style.left = `${randomX}px`;
-            target.style.top = `${randomY}px`;
+        .stat {
+            background-color: #1f4068; /* アクセントカラー */
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+
+        .stat .label {
+            display: block;
+            font-size: 0.8em;
+            color: #a0a0a0; /* やや薄いラベル色 */
+            margin-bottom: 3px;
+        }
+
+        /* ゲームエリア */
+        #game-area {
+            width: 100%;
+            height: 300px; /* モバイルでも十分な高さ */
+            background-color: #0f1c30; /* ゲームエリアの背景色 */
+            border: 3px solid #1f4068; /* アクセントカラー */
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden; /* ターゲットがはみ出ないように */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 25px;
+            cursor: pointer;
+        }
+
+        #instructions {
+            padding: 20px;
+            font-size: 1.1em;
+            color: #c0c0c0;
+        }
+
+        #instructions p {
+            margin: 10px 0;
+        }
+
+        /* ターゲットのスタイル */
+        #target {
+            width: 50px;
+            height: 50px;
+            background-color: #f7b733; /* 明るい黄色 */
+            border-radius: 50%;
+            position: absolute;
+            cursor: pointer;
+            box-shadow: 0 0 15px #f7b733, 0 0 25px #f7b733; /* 発光効果 */
+            transition: transform 0.1s ease-out, background-color 0.2s;
+        }
+
+        #target:hover {
+            transform: scale(1.1);
+        }
+
+        #target.clicked {
+            background-color: #fc4a1a; /* クリックされた時の色 */
+            transform: scale(0.9);
+        }
+
+        /* ボタン */
+        button {
+            padding: 12px 25px;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #ffffff;
+            background-color: #e43f5a; /* 目立つボタン色 */
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        button:hover {
+            background-color: #c03248; /* ホバー時の色 */
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        /* モーダル */
+        .hidden {
+            display: none !important;
+        }
+
+        #game-over-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: #162447;
+            padding: 30px 40px;
+            border-radius: 15px;
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid #e43f5a;
+        }
+
+        .modal-content h2 {
+            color: #e43f5a;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        .modal-content p {
+            font-size: 1.1em;
+            margin: 15px 0;
+        }
+
+        /* フッター */
+        footer {
+            margin-top: 30px;
+            font-size: 0.8em;
+            color: #707070;
+        }
+
+        /* レスポンシブ対応 */
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.8em;
+            }
+            .subtitle {
+                font-size: 1em;
+            }
+            .game-stats {
+                grid-template-columns: 1fr; /* 縦並びにする */
+            }
+            #game-area {
+                height: 250px;
+            }
+            #target {
+                width: 40px;
+                height: 40px;
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 1em;
+            }
+            .modal-content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>瞬間反応チャレンジ</h1>
+            <p class="subtitle">光を追え！</p>
+        </header>
+
+        <div class="game-stats">
+            <div class="stat">
+                <span class="label">今回の反応時間:</span>
+                <span id="current-reaction-time">- ms</span>
+            </div>
+            <div class="stat">
+                <span class="label">平均反応時間:</span>
+                <span id="average-reaction-time">- ms</span>
+            </div>
+            <div class="stat">
+                <span class="label">ベストタイム:</span>
+                <span id="best-reaction-time">- ms</span>
+            </div>
+            <div class="stat">
+                <span class="label">残り回数:</span>
+                <span id="remaining-clicks">10</span>
+            </div>
+        </div>
+
+        <div id="game-area">
+            <div id="instructions">
+                <p>下の「スタート」ボタンを押してゲームを開始してください。</p>
+                <p>画面に表示されるターゲットをできるだけ速くクリック！</p>
+            </div>
+            <div id="target" class="hidden"></div>
+        </div>
+
+        <button id="start-button">スタート</button>
+
+        <div id="game-over-modal" class="hidden">
+            <div class="modal-content">
+                <h2>ゲームオーバー！</h2>
+                <p>あなたの平均反応時間: <span id="final-average-time"></span> ms</p>
+                <p>あなたのベストタイム: <span id="final-best-time"></span> ms</p>
+                <button id="restart-button">もう一度挑戦</button>
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2024 瞬間反応チャレンジ</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM要素の取得
+            const gameArea = document.getElementById('game-area');
+            const target = document.getElementById('target');
+            const startButton = document.getElementById('start-button');
+            const currentReactionTimeEl = document.getElementById('current-reaction-time');
+            const averageReactionTimeEl = document.getElementById('average-reaction-time');
+            const bestReactionTimeEl = document.getElementById('best-reaction-time');
+            const remainingClicksEl = document.getElementById('remaining-clicks');
+            const instructionsEl = document.getElementById('instructions');
+
+            const gameOverModal = document.getElementById('game-over-modal');
+            const finalAverageTimeEl = document.getElementById('final-average-time');
+            const finalBestTimeEl = document.getElementById('final-best-time');
+            const restartButton = document.getElementById('restart-button');
+
+            // ゲームの状態変数
+            let gameStarted = false;
+            let clicksRemaining;
+            let reactionTimes = [];
+            let bestTime = Infinity;
+            let targetAppearTime;
+            let targetTimeoutId;
+
+            const TOTAL_CLICKS = 10; // 1ゲームあたりのクリック回数
+
+            // 初期化処理
+            function initGame() {
+                gameStarted = false;
+                clicksRemaining = TOTAL_CLICKS;
+                reactionTimes = [];
+                bestTime = Infinity;
+                
+                startButton.disabled = false;
+                startButton.textContent = 'スタート';
+                target.classList.add('hidden');
+                instructionsEl.classList.remove('hidden');
+                instructionsEl.innerHTML = "<p>下の「スタート」ボタンを押してゲームを開始してください。</p><p>画面に表示されるターゲットをできるだけ速くクリック！</p>"; // 初期メッセージに戻す
+                gameOverModal.classList.add('hidden');
+
+                updateStatsDisplay();
+                currentReactionTimeEl.textContent = '- ms';
+            }
+
+            // 統計情報の表示を更新
+            function updateStatsDisplay() {
+                remainingClicksEl.textContent = clicksRemaining;
+                const avgTime = reactionTimes.length > 0 
+                    ? (reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length).toFixed(0)
+                    : '-';
+                averageReactionTimeEl.textContent = `${avgTime} ms`;
+                bestReactionTimeEl.textContent = bestTime === Infinity ? '- ms' : `${bestTime} ms`;
+            }
+
+            // ゲーム開始処理
+            function startGame() {
+                if (gameStarted) return;
+                // startGameが呼ばれるたびにinitGameを実行することで、
+                // スタートボタン連打やリスタート時に状態が正しくリセットされる
+                initGame(); 
+                gameStarted = true;
+
+
+                startButton.disabled = true;
+                startButton.textContent = 'ゲーム中...';
+                instructionsEl.classList.add('hidden');
+                
+                // console.log("ゲーム開始！"); // デバッグ用ログ
+                appearTarget();
+            }
+
+            // ターゲットを表示する処理
+            function appearTarget() {
+                if (clicksRemaining <= 0) {
+                    endGame();
+                    return;
+                }
+
+                target.classList.add('hidden');
+                target.classList.remove('clicked'); 
+
+                const delay = Math.random() * 2000 + 500; 
+                // console.log(`次のターゲット表示まで: ${delay.toFixed(0)}ms`); // デバッグ用ログ
+
+                clearTimeout(targetTimeoutId); 
+                targetTimeoutId = setTimeout(() => {
+                    const gameAreaRect = gameArea.getBoundingClientRect();
+                    // target.offsetWidthだと、hiddenの時は0になることがあるので、固定値を指定するか、
+                    // CSSで定義したサイズをJavaScriptで取得する方が安定します。
+                    // ここではCSSで50pxと定義されている前提で進めます。
+                    const targetSize = 50; 
+
+                    const maxX = gameAreaRect.width - targetSize;
+                    const maxY = gameAreaRect.height - targetSize;
+
+                    // 0未満にならないように調整
+                    const randomX = Math.max(0, Math.floor(Math.random() * maxX));
+                    const randomY = Math.max(0, Math.floor(Math.random() * maxY));
+
+                    target.style.left = `${randomX}px`;
+                    target.style.top = `${randomY}px`;
+                    
+                    target.classList.remove('hidden');
+                    targetAppearTime = Date.now(); 
+                    // console.log(`ターゲット表示: X=${randomX}, Y=${randomY}`); // デバッグ用ログ
+                }, delay);
+            }
+
+            // ターゲットクリック時の処理
+            function handleTargetClick() {
+                if (!gameStarted || target.classList.contains('hidden')) {
+                    // console.log("ターゲットクリック無効（ゲーム未開始またはターゲット非表示）"); // デバッグ用ログ
+                    return;
+                }
+
+                const clickTime = Date.now();
+                const reactionTime = clickTime - targetAppearTime;
+                // console.log(`反応時間: ${reactionTime}ms`); // デバッグ用ログ
+
+                reactionTimes.push(reactionTime);
+                currentReactionTimeEl.textContent = `${reactionTime} ms`;
+
+                if (reactionTime < bestTime) {
+                    bestTime = reactionTime;
+                }
+
+                clicksRemaining--;
+                updateStatsDisplay();
+                
+                target.classList.add('clicked');
+
+                if (clicksRemaining > 0) {
+                    // 短い時間隠して再度表示する
+                    target.classList.add('hidden');
+                    appearTarget();
+                } else {
+                    endGame();
+                }
+            }
+
+            // ゲーム終了処理
+            function endGame() {
+                gameStarted = false;
+                clearTimeout(targetTimeoutId); 
+                target.classList.add('hidden');
+                instructionsEl.classList.remove('hidden');
+                instructionsEl.innerHTML = "<p>お疲れ様でした！「もう一度挑戦」で再プレイできます。</p>";
+
+                startButton.disabled = false;
+                startButton.textContent = 'スタート';
+                
+                const avgTime = reactionTimes.length > 0 
+                    ? (reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length).toFixed(0)
+                    : 'N/A';
+
+                finalAverageTimeEl.textContent = avgTime;
+                finalBestTimeEl.textContent = bestTime === Infinity ? 'N/A' : bestTime;
+                gameOverModal.classList.remove('hidden');
+                // console.log("ゲーム終了！ 平均:", avgTime, "ベスト:", bestTime); // デバッグ用ログ
+            }
+
+            // イベントリスナーの設定
+            startButton.addEventListener('click', startGame);
+            target.addEventListener('click', handleTargetClick);
+            restartButton.addEventListener('click', () => {
+                gameOverModal.classList.add('hidden');
+                // initGame(); // startGame内でinitGameが呼ばれるので不要
+                startGame(); 
+            });
             
-            target.classList.remove('hidden');
-            targetAppearTime = Date.now(); // ターゲットが表示された時刻を記録
-            console.log(`ターゲット表示: X=${randomX}, Y=${randomY}`);
-        }, delay);
-    }
+            gameArea.addEventListener('click', (event) => {
+                if (event.target === target) {
+                    return;
+                }
+                if (gameStarted && !target.classList.contains('hidden')) {
+                    // console.log("ターゲットの近くがクリックされました。ターゲットを直接クリックしてください。"); // デバッグ用ログ
+                }
+            });
 
-    // ターゲットクリック時の処理
-    function handleTargetClick() {
-        if (!gameStarted || target.classList.contains('hidden')) {
-            console.log("ターゲットクリック無効（ゲーム未開始またはターゲット非表示）");
-            return;
-        }
-
-        const clickTime = Date.now();
-        const reactionTime = clickTime - targetAppearTime;
-        console.log(`反応時間: ${reactionTime}ms`);
-
-        reactionTimes.push(reactionTime);
-        currentReactionTimeEl.textContent = `${reactionTime} ms`;
-
-        if (reactionTime < bestTime) {
-            bestTime = reactionTime;
-        }
-
-        clicksRemaining--;
-        updateStatsDisplay();
-        
-        target.classList.add('clicked'); // クリックエフェクト
-
-        if (clicksRemaining > 0) {
-            appearTarget();
-        } else {
-            endGame();
-        }
-    }
-
-    // ゲーム終了処理
-    function endGame() {
-        gameStarted = false;
-        clearTimeout(targetTimeoutId); // ターゲット表示タイマーをクリア
-        target.classList.add('hidden');
-        instructionsEl.classList.remove('hidden');
-        instructionsEl.innerHTML = "<p>お疲れ様でした！「もう一度挑戦」で再プレイできます。</p>";
-
-        startButton.disabled = false;
-        startButton.textContent = 'スタート';
-        
-        const avgTime = reactionTimes.length > 0 
-            ? (reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length).toFixed(0)
-            : 'N/A';
-
-        finalAverageTimeEl.textContent = avgTime;
-        finalBestTimeEl.textContent = bestTime === Infinity ? 'N/A' : bestTime;
-        gameOverModal.classList.remove('hidden');
-        console.log("ゲーム終了！ 平均:", avgTime, "ベスト:", bestTime);
-    }
-
-    // イベントリスナーの設定
-    startButton.addEventListener('click', startGame);
-    target.addEventListener('click', handleTargetClick);
-    restartButton.addEventListener('click', () => {
-        gameOverModal.classList.add('hidden');
-        initGame(); // ゲームを初期状態に戻す
-        startGame(); // すぐに新しいゲームを開始
-    });
-    
-    // ゲームエリアクリックでもターゲットクリックを試みる（ターゲットが小さい場合のため）
-    gameArea.addEventListener('click', (event) => {
-        // イベントがターゲット自身から発生した場合は、handleTargetClickで処理されるので何もしない
-        if (event.target === target) {
-            return;
-        }
-        // ターゲットが表示されていて、ゲームエリアがクリックされた場合
-        if (gameStarted && !target.classList.contains('hidden')) {
-            // 意図しないクリック（ターゲットの外側）とみなし、ペナルティや次のターゲット表示などを行うことも可能
-            // ここでは、ターゲットのクリックを促すメッセージを表示する程度に留める
-            console.log("ターゲットの近くがクリックされました。ターゲットを直接クリックしてください。");
-        }
-    });
-
-    // 初期化
-    initGame();
-});
+            // 初期化
+            initGame();
+        });
+    </script>
+</body>
+</html>
