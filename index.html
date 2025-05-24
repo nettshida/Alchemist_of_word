@@ -1,0 +1,180 @@
+document.addEventListener('DOMContentLoaded', () => {
+    // DOM要素の取得
+    const gameArea = document.getElementById('game-area');
+    const target = document.getElementById('target');
+    const startButton = document.getElementById('start-button');
+    const currentReactionTimeEl = document.getElementById('current-reaction-time');
+    const averageReactionTimeEl = document.getElementById('average-reaction-time');
+    const bestReactionTimeEl = document.getElementById('best-reaction-time');
+    const remainingClicksEl = document.getElementById('remaining-clicks');
+    const instructionsEl = document.getElementById('instructions');
+
+    const gameOverModal = document.getElementById('game-over-modal');
+    const finalAverageTimeEl = document.getElementById('final-average-time');
+    const finalBestTimeEl = document.getElementById('final-best-time');
+    const restartButton = document.getElementById('restart-button');
+
+    // ゲームの状態変数
+    let gameStarted = false;
+    let clicksRemaining;
+    let reactionTimes = [];
+    let bestTime = Infinity;
+    let targetAppearTime;
+    let targetTimeoutId;
+
+    const TOTAL_CLICKS = 10; // 1ゲームあたりのクリック回数
+
+    // 初期化処理
+    function initGame() {
+        gameStarted = false;
+        clicksRemaining = TOTAL_CLICKS;
+        reactionTimes = [];
+        bestTime = Infinity;
+        
+        startButton.disabled = false;
+        startButton.textContent = 'スタート';
+        target.classList.add('hidden');
+        instructionsEl.classList.remove('hidden');
+        gameOverModal.classList.add('hidden');
+
+        updateStatsDisplay();
+        currentReactionTimeEl.textContent = '- ms';
+    }
+
+    // 統計情報の表示を更新
+    function updateStatsDisplay() {
+        remainingClicksEl.textContent = clicksRemaining;
+        const avgTime = reactionTimes.length > 0 
+            ? (reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length).toFixed(0)
+            : '-';
+        averageReactionTimeEl.textContent = `${avgTime} ms`;
+        bestReactionTimeEl.textContent = bestTime === Infinity ? '- ms' : `${bestTime} ms`;
+    }
+
+    // ゲーム開始処理
+    function startGame() {
+        if (gameStarted) return;
+        gameStarted = true;
+        initGame(); // ゲーム状態をリセット
+
+        startButton.disabled = true;
+        startButton.textContent = 'ゲーム中...';
+        instructionsEl.classList.add('hidden');
+        
+        console.log("ゲーム開始！");
+        appearTarget();
+    }
+
+    // ターゲットを表示する処理
+    function appearTarget() {
+        if (clicksRemaining <= 0) {
+            endGame();
+            return;
+        }
+
+        // ターゲットを一旦隠す（連続表示の場合に備える）
+        target.classList.add('hidden');
+        target.classList.remove('clicked'); // クリックエフェクトをリセット
+
+        // ランダムな遅延後にターゲットを表示
+        const delay = Math.random() * 2000 + 500; // 0.5秒から2.5秒のランダムな遅延
+        console.log(`次のターゲット表示まで: ${delay.toFixed(0)}ms`);
+
+        clearTimeout(targetTimeoutId); // 既存のタイマーをクリア
+        targetTimeoutId = setTimeout(() => {
+            const gameAreaRect = gameArea.getBoundingClientRect();
+            const targetSize = target.offsetWidth; // ターゲットの実際の幅を取得
+
+            // ターゲットがエリア内に完全に収まるように位置を計算
+            const maxX = gameAreaRect.width - targetSize;
+            const maxY = gameAreaRect.height - targetSize;
+
+            const randomX = Math.max(0, Math.floor(Math.random() * maxX));
+            const randomY = Math.max(0, Math.floor(Math.random() * maxY));
+
+            target.style.left = `${randomX}px`;
+            target.style.top = `${randomY}px`;
+            
+            target.classList.remove('hidden');
+            targetAppearTime = Date.now(); // ターゲットが表示された時刻を記録
+            console.log(`ターゲット表示: X=${randomX}, Y=${randomY}`);
+        }, delay);
+    }
+
+    // ターゲットクリック時の処理
+    function handleTargetClick() {
+        if (!gameStarted || target.classList.contains('hidden')) {
+            console.log("ターゲットクリック無効（ゲーム未開始またはターゲット非表示）");
+            return;
+        }
+
+        const clickTime = Date.now();
+        const reactionTime = clickTime - targetAppearTime;
+        console.log(`反応時間: ${reactionTime}ms`);
+
+        reactionTimes.push(reactionTime);
+        currentReactionTimeEl.textContent = `${reactionTime} ms`;
+
+        if (reactionTime < bestTime) {
+            bestTime = reactionTime;
+        }
+
+        clicksRemaining--;
+        updateStatsDisplay();
+        
+        target.classList.add('clicked'); // クリックエフェクト
+
+        if (clicksRemaining > 0) {
+            appearTarget();
+        } else {
+            endGame();
+        }
+    }
+
+    // ゲーム終了処理
+    function endGame() {
+        gameStarted = false;
+        clearTimeout(targetTimeoutId); // ターゲット表示タイマーをクリア
+        target.classList.add('hidden');
+        instructionsEl.classList.remove('hidden');
+        instructionsEl.innerHTML = "<p>お疲れ様でした！「もう一度挑戦」で再プレイできます。</p>";
+
+        startButton.disabled = false;
+        startButton.textContent = 'スタート';
+        
+        const avgTime = reactionTimes.length > 0 
+            ? (reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length).toFixed(0)
+            : 'N/A';
+
+        finalAverageTimeEl.textContent = avgTime;
+        finalBestTimeEl.textContent = bestTime === Infinity ? 'N/A' : bestTime;
+        gameOverModal.classList.remove('hidden');
+        console.log("ゲーム終了！ 平均:", avgTime, "ベスト:", bestTime);
+    }
+
+    // イベントリスナーの設定
+    startButton.addEventListener('click', startGame);
+    target.addEventListener('click', handleTargetClick);
+    restartButton.addEventListener('click', () => {
+        gameOverModal.classList.add('hidden');
+        initGame(); // ゲームを初期状態に戻す
+        startGame(); // すぐに新しいゲームを開始
+    });
+    
+    // ゲームエリアクリックでもターゲットクリックを試みる（ターゲットが小さい場合のため）
+    gameArea.addEventListener('click', (event) => {
+        // イベントがターゲット自身から発生した場合は、handleTargetClickで処理されるので何もしない
+        if (event.target === target) {
+            return;
+        }
+        // ターゲットが表示されていて、ゲームエリアがクリックされた場合
+        if (gameStarted && !target.classList.contains('hidden')) {
+            // 意図しないクリック（ターゲットの外側）とみなし、ペナルティや次のターゲット表示などを行うことも可能
+            // ここでは、ターゲットのクリックを促すメッセージを表示する程度に留める
+            console.log("ターゲットの近くがクリックされました。ターゲットを直接クリックしてください。");
+        }
+    });
+
+    // 初期化
+    initGame();
+});
